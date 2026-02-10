@@ -1,7 +1,0 @@
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/LLMService.csproj.AssemblyReference.cache
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/rpswa.dswa.cache.json
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/LLMService.GeneratedMSBuildEditorConfig.editorconfig
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/LLMService.AssemblyInfoInputs.cache
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/LLMService.AssemblyInfo.cs
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/LLMService.csproj.CoreCompileInputs.cache
-/Users/Boyd/SourceCode/githubs/Health Tech Innovation Project/HealthTechInnovation/src/LLMService/obj/Debug/net8.0/LLMService.MvcApplicationPartsAssemblyInfo.cache
