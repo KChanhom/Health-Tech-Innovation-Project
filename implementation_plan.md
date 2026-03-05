@@ -43,6 +43,8 @@ Worker service (BackgroundService). Houses:
 - `IDataSourceAdapter` interface + `EhrAdapter`, `IoTAdapter`, `ExternalSystemAdapter`
 - `FhirSubscriptionManager` – Create/manage FHIR Subscriptions
 - `BulkDataIngestionService` – $export + NDJSON download
+- `Hl7v2ToFhirTransformer` – HL7 v2 → FHIR mapping
+- `KafkaFhirProducer` – publish FHIR resources to Kafka
 
 ---
 

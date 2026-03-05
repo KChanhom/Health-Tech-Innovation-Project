@@ -1,7 +1,7 @@
 using IngestionService.Adapters;
+using IngestionService.Messaging;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Shared.Fhir;
 
 namespace IngestionService;
 
@@ -12,17 +12,17 @@ namespace IngestionService;
 public class IngestionWorker : BackgroundService
 {
     private readonly IEnumerable<IDataSourceAdapter> _adapters;
-    private readonly IFhirCrudService _fhirCrudService;
+    private readonly IKafkaFhirProducer _kafkaProducer;
     private readonly ILogger<IngestionWorker> _logger;
     private readonly TimeSpan _pollingInterval;
 
     public IngestionWorker(
         IEnumerable<IDataSourceAdapter> adapters,
-        IFhirCrudService fhirCrudService,
+        IKafkaFhirProducer kafkaProducer,
         ILogger<IngestionWorker> logger)
     {
         _adapters = adapters;
-        _fhirCrudService = fhirCrudService;
+        _kafkaProducer = kafkaProducer;
         _logger = logger;
         _pollingInterval = TimeSpan.FromMinutes(5); // Configurable via settings
     }
@@ -59,7 +59,7 @@ public class IngestionWorker : BackgroundService
     {
         _logger.LogInformation("──────── Starting ingestion cycle ────────");
 
-        int totalIngested = 0;
+        int totalPublished = 0;
         int totalErrors = 0;
 
         foreach (var adapter in _adapters)
@@ -74,22 +74,10 @@ public class IngestionWorker : BackgroundService
                 _logger.LogInformation("Fetched {Count} resources from {Source}",
                     resourceList.Count, adapter.SourceName);
 
-                foreach (var resource in resourceList)
+                if (resourceList.Count > 0)
                 {
-                    try
-                    {
-                        var created = await _fhirCrudService.CreateResourceAsync(resource);
-                        totalIngested++;
-
-                        _logger.LogDebug("Ingested {Type} with ID {Id} from {Source}",
-                            resource.TypeName, created.Id, adapter.SourceName);
-                    }
-                    catch (Exception ex)
-                    {
-                        totalErrors++;
-                        _logger.LogWarning(ex, "Failed to ingest {Type} from {Source}",
-                            resource.TypeName, adapter.SourceName);
-                    }
+                    await _kafkaProducer.PublishAsync(resourceList, cancellationToken);
+                    totalPublished += resourceList.Count;
                 }
             }
             catch (Exception ex)
@@ -99,7 +87,7 @@ public class IngestionWorker : BackgroundService
         }
 
         _logger.LogInformation(
-            "──────── Ingestion cycle complete ──────── Ingested: {Ingested}, Errors: {Errors}",
-            totalIngested, totalErrors);
+            "──────── Ingestion cycle complete ──────── Published: {Published}, Errors: {Errors}",
+            totalPublished, totalErrors);
     }
 }

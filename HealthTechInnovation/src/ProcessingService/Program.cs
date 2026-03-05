@@ -1,4 +1,6 @@
+using Confluent.Kafka;
 using ProcessingService;
+using ProcessingService.Messaging;
 using ProcessingService.Persistence;
 using ProcessingService.Terminology;
 using ProcessingService.Validation;
@@ -19,6 +21,25 @@ builder.Services.AddSingleton<IFhirCrudService, FhirCrudService>();
 builder.Services.AddSingleton<FhirValidationService>();
 builder.Services.AddSingleton<TerminologyService>();
 builder.Services.AddSingleton<ResourcePersistenceService>();
+
+// ── Kafka consumer for FHIR resources ──
+builder.Services.AddSingleton<IConsumer<string, string>>(_ =>
+{
+    var bootstrapServers = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+    var groupId = builder.Configuration["Kafka:GroupId"] ?? "healthtech-processing";
+
+    var config = new ConsumerConfig
+    {
+        BootstrapServers = bootstrapServers,
+        GroupId = groupId,
+        AutoOffsetReset = AutoOffsetReset.Earliest,
+        EnableAutoCommit = true
+    };
+
+    return new ConsumerBuilder<string, string>(config).Build();
+});
+
+builder.Services.AddSingleton<IKafkaFhirConsumer, KafkaFhirConsumer>();
 
 // ── Worker ──
 builder.Services.AddHostedService<ProcessingWorker>();

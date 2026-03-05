@@ -1,6 +1,7 @@
 using Hl7.Fhir.Model;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ProcessingService.Messaging;
 using ProcessingService.Persistence;
 using ProcessingService.Terminology;
 using ProcessingService.Validation;
@@ -14,20 +15,20 @@ namespace ProcessingService;
 /// </summary>
 public class ProcessingWorker : BackgroundService
 {
+    private readonly IKafkaFhirConsumer _consumer;
     private readonly FhirValidationService _validator;
     private readonly TerminologyService _terminologyService;
     private readonly ResourcePersistenceService _persistenceService;
     private readonly ILogger<ProcessingWorker> _logger;
-    
-    // In a real system, this would come from a message bus (RabbitMQ, Azure Service Bus, etc.)
-    private readonly Queue<Resource> _simulationQueue = new();
 
     public ProcessingWorker(
+        IKafkaFhirConsumer consumer,
         FhirValidationService validator,
         TerminologyService terminologyService,
         ResourcePersistenceService persistenceService,
         ILogger<ProcessingWorker> logger)
     {
+        _consumer = consumer;
         _validator = validator;
         _terminologyService = terminologyService;
         _persistenceService = persistenceService;
@@ -38,18 +39,16 @@ public class ProcessingWorker : BackgroundService
     {
         _logger.LogInformation("ProcessingWorker starting...");
 
-        // Simulate receiving some messages
-        EnqueueSimulationData();
-
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (_simulationQueue.TryDequeue(out var resource))
+            var resource = await _consumer.ConsumeAsync(stoppingToken);
+            if (resource != null)
             {
                 await ProcessResourceAsync(resource, stoppingToken);
             }
             else
             {
-                await Task.Delay(5000, stoppingToken); // Wait for more messages
+                await Task.Delay(1000, stoppingToken); // No message, short backoff
             }
         }
     }
@@ -92,25 +91,4 @@ public class ProcessingWorker : BackgroundService
         }
     }
 
-    private void EnqueueSimulationData()
-    {
-        _logger.LogInformation("Enqueuing simulation data...");
-
-        var patient = new Patient
-        {
-            Name = new List<HumanName> { new() { Family = "Doe", Given = new[] { "Jane" } } },
-            Gender = AdministrativeGender.Female,
-            BirthDate = "1990-05-20"
-        };
-        _simulationQueue.Enqueue(patient);
-
-        var observation = new Observation
-        {
-            Status = ObservationStatus.Final,
-            Code = new CodeableConcept("http://loinc.org", "8867-4", null), // Missing display, should be enriched
-            Value = new Quantity(80, "/min", "http://unitsofmeasure.org"),
-            Effective = new FhirDateTime(DateTimeOffset.UtcNow.ToString("o"))
-        };
-        _simulationQueue.Enqueue(observation);
-    }
 }

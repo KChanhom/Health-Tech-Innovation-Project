@@ -93,9 +93,26 @@ Simulates pulling Medication/AllergyIntolerance from external systems.
 - `DownloadNdjsonFilesAsync()` – Download & parse NDJSON files
 - `ParseNdjsonResourcesAsync()` – Deserialize FHIR resources
 
-#### [NEW] [IngestionWorker.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/src/IngestionService/IngestionWorker.cs)
+#### [NEW] [Hl7v2ToFhirTransformer.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/src/IngestionService/Hl7v2/Hl7v2ToFhirTransformer.cs)
 
-`BackgroundService` that orchestrates adapters on a configurable schedule.
+- Parses HL7 v2 messages (PID/OBX) and converts them to FHIR `Patient` / `Observation`
+- Handles edge cases (invalid dates, non-numeric values, cancellation)
+- Intended to run before publishing resources to the message bus
+
+#### [NEW] [KafkaFhirProducer.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/src/IngestionService/Messaging/KafkaFhirProducer.cs)
+
+- Publishes FHIR resources as JSON messages to Kafka topic `fhir.resources`
+- Uses `Confluent.Kafka` and Firely `FhirJsonSerializer`
+
+#### [MODIFY] [IngestionWorker.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/src/IngestionService/IngestionWorker.cs)
+
+- `BackgroundService` that orchestrates adapters on a configurable schedule
+- Instead of writing directly to the FHIR server, publishes all ingested resources to Kafka via `IKafkaFhirProducer`
+
+#### [MODIFY] [Program.cs – IngestionService](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/src/IngestionService/Program.cs)
+
+- Registers adapters, `Hl7v2ToFhirTransformer`, `KafkaFhirProducer`
+- Configures Kafka `Producer<string,string>` from `Kafka:BootstrapServers`
 
 ---
 
@@ -105,17 +122,25 @@ Simulates pulling Medication/AllergyIntolerance from external systems.
 
 Tests for FhirClientFactory configuration and creation.
 
-#### [NEW] [FhirCrudServiceTests.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/tests/HealthTechInnovation.Tests/FhirCrudServiceTests.cs)
-
-Tests for CRUD operations (mocked FhirClient).
-
 #### [NEW] [AdapterTests.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/tests/HealthTechInnovation.Tests/AdapterTests.cs)
 
-Tests for each adapter implementation.
+Tests for each adapter implementation and cancellation behavior.
 
 #### [NEW] [BulkDataIngestionServiceTests.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/tests/HealthTechInnovation.Tests/BulkDataIngestionServiceTests.cs)
 
-Tests for bulk data export and NDJSON parsing.
+Tests for bulk data export and NDJSON parsing (valid/empty/invalid lines).
+
+#### [MODIFY] [IngestionWorkerTests.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/tests/HealthTechInnovation.Tests/IngestionWorkerTests.cs)
+
+Verifies ingestion cycle publishes resources from all adapters to Kafka and handles failing adapters gracefully.
+
+#### [NEW] [Hl7v2ToFhirTransformerTests.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/tests/HealthTechInnovation.Tests/Hl7v2ToFhirTransformerTests.cs)
+
+Tests HL7 v2 PID/OBX → FHIR `Patient` / `Observation` mapping and edge cases (invalid dates, non-numeric values, cancellation).
+
+#### [NEW] [KafkaMessagingTests.cs](file:///Users/Boyd/SourceCode/githubs/Health%20Tech%20Innovation%20Project/HealthTechInnovation/tests/HealthTechInnovation.Tests/KafkaMessagingTests.cs)
+
+Tests `KafkaFhirProducer` / `KafkaFhirConsumer` serialization, topic usage, and error handling.
 
 ---
 

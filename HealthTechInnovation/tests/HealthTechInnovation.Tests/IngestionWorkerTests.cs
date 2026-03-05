@@ -3,14 +3,14 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using IngestionService;
 using IngestionService.Adapters;
-using Shared.Fhir;
+using IngestionService.Messaging;
 
 namespace HealthTechInnovation.Tests;
 
 public class IngestionWorkerTests
 {
     [Fact]
-    public async Task RunIngestionCycleAsync_WithMultipleAdapters_IngestsAllResources()
+    public async Task RunIngestionCycleAsync_WithMultipleAdapters_PublishesAllResourcesToKafka()
     {
         // Arrange
         var mockAdapter1 = new Mock<IDataSourceAdapter>();
@@ -33,29 +33,33 @@ public class IngestionWorkerTests
                 }
             });
 
-        var mockCrudService = new Mock<IFhirCrudService>();
-        mockCrudService.Setup(c => c.CreateResourceAsync(It.IsAny<Resource>()))
-            .ReturnsAsync((Resource r) =>
+        var publishedResources = new List<Resource>();
+        var mockKafkaProducer = new Mock<IKafkaFhirProducer>();
+        mockKafkaProducer
+            .Setup(p => p.PublishAsync(It.IsAny<IEnumerable<Resource>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<Resource>, CancellationToken>((resources, _) =>
             {
-                r.Id = Guid.NewGuid().ToString();
-                return r;
-            });
+                publishedResources.AddRange(resources);
+            })
+            .Returns(Task.CompletedTask);
 
         var logger = new Mock<ILogger<IngestionWorker>>();
         var worker = new IngestionWorker(
             new[] { mockAdapter1.Object, mockAdapter2.Object },
-            mockCrudService.Object,
+            mockKafkaProducer.Object,
             logger.Object);
 
         // Act
         await worker.RunIngestionCycleAsync(CancellationToken.None);
 
-        // Assert — each adapter contributed 1 resource → 2 total creates
-        mockCrudService.Verify(c => c.CreateResourceAsync(It.IsAny<Resource>()), Times.Exactly(2));
+        // Assert — each adapter contributed 1 resource → 2 total published
+        mockKafkaProducer.Verify(p => p.PublishAsync(It.IsAny<IEnumerable<Resource>>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        Assert.Equal(2, publishedResources.Count);
     }
 
     [Fact]
-    public async Task RunIngestionCycleAsync_AdapterThrows_ContinuesWithOtherAdapters()
+    public async Task RunIngestionCycleAsync_AdapterThrows_ContinuesWithOtherAdaptersAndPublishes()
     {
         // Arrange
         var failingAdapter = new Mock<IDataSourceAdapter>();
@@ -71,42 +75,47 @@ public class IngestionWorkerTests
                 new Patient { Name = new List<HumanName> { new() { Family = "Healthy" } } }
             });
 
-        var mockCrudService = new Mock<IFhirCrudService>();
-        mockCrudService.Setup(c => c.CreateResourceAsync(It.IsAny<Resource>()))
-            .ReturnsAsync((Resource r) =>
+        var publishedResources = new List<Resource>();
+        var mockKafkaProducer = new Mock<IKafkaFhirProducer>();
+        mockKafkaProducer
+            .Setup(p => p.PublishAsync(It.IsAny<IEnumerable<Resource>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<Resource>, CancellationToken>((resources, _) =>
             {
-                r.Id = "created-1";
-                return r;
-            });
+                publishedResources.AddRange(resources);
+            })
+            .Returns(Task.CompletedTask);
 
         var logger = new Mock<ILogger<IngestionWorker>>();
         var worker = new IngestionWorker(
             new[] { failingAdapter.Object, workingAdapter.Object },
-            mockCrudService.Object,
+            mockKafkaProducer.Object,
             logger.Object);
 
         // Act
         await worker.RunIngestionCycleAsync(CancellationToken.None);
 
-        // Assert — the working adapter still got its resource created
-        mockCrudService.Verify(c => c.CreateResourceAsync(It.IsAny<Resource>()), Times.Once);
+        // Assert — the working adapter still got its resource published
+        mockKafkaProducer.Verify(p => p.PublishAsync(It.IsAny<IEnumerable<Resource>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Single(publishedResources);
     }
 
     [Fact]
     public async Task RunIngestionCycleAsync_NoAdapters_CompletesWithoutError()
     {
         // Arrange
-        var mockCrudService = new Mock<IFhirCrudService>();
+        var mockKafkaProducer = new Mock<IKafkaFhirProducer>();
         var logger = new Mock<ILogger<IngestionWorker>>();
         var worker = new IngestionWorker(
             Enumerable.Empty<IDataSourceAdapter>(),
-            mockCrudService.Object,
+            mockKafkaProducer.Object,
             logger.Object);
 
         // Act & Assert — should not throw
         await worker.RunIngestionCycleAsync(CancellationToken.None);
 
-        // No creates should have been called
-        mockCrudService.Verify(c => c.CreateResourceAsync(It.IsAny<Resource>()), Times.Never);
+        // No publishes should have been called
+        mockKafkaProducer.Verify(p => p.PublishAsync(It.IsAny<IEnumerable<Resource>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
